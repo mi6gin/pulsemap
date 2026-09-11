@@ -1,0 +1,50 @@
+name: pulsemap
+
+services:
+  app:
+    build:
+      context: .
+    env_file:
+      - .env
+    environment:
+      APP_ENV: local
+      APP_URL: http://localhost:8000
+      DB_CONNECTION: sqlite
+      DB_DATABASE: /var/www/html/database/database.sqlite
+      QUEUE_CONNECTION: database
+      SESSION_DRIVER: database
+      CACHE_STORE: database
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./.env:/var/www/html/.env
+      - ./database:/var/www/html/database
+      - ./storage:/var/www/html/storage
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:8000"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  worker:
+    build:
+      context: .
+    command: ["php", "artisan", "queue:work", "--queue=default", "--tries=4", "--timeout=180", "--sleep=2"]
+    env_file:
+      - .env
+    environment:
+      APP_ENV: local
+      APP_URL: http://localhost:8000
+      DB_CONNECTION: sqlite
+      DB_DATABASE: /var/www/html/database/database.sqlite
+      QUEUE_CONNECTION: database
+      SESSION_DRIVER: database
+      CACHE_STORE: database
+    volumes:
+      - ./.env:/var/www/html/.env
+      - ./database:/var/www/html/database
+      - ./storage:/var/www/html/storage
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
