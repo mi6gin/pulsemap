@@ -24,7 +24,7 @@ class OrganizationResource extends JsonResource
             'rating' => $this->rating === null ? null : (float) $this->rating,
             'ratings_count' => $this->ratings_count,
             'reviews_count' => $this->reviews_count,
-            'stored_reviews_count' => $this->whenCounted('reviews'),
+            'stored_reviews_count' => $this->whenHas('stored_reviews_count'),
             'status' => $this->status->value,
             'progress' => $this->progress,
             'sync_error' => $this->sync_error,

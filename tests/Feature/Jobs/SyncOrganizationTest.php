@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Jobs;
 
+use App\Exceptions\YandexMapsParsingException;
 use App\Jobs\SyncOrganization;
 use App\Models\Organization;
 use App\Models\Review;
@@ -82,6 +83,21 @@ class SyncOrganizationTest extends TestCase
         $organization->refresh();
         $this->assertSame(OrganizationStatus::Failed, $organization->status);
         $this->assertSame('Источник изменился', $organization->sync_error);
+    }
+
+    public function test_non_retryable_parser_failure_is_recorded_without_retrying_the_job(): void
+    {
+        $organization = Organization::factory()->queued()->create();
+        $parser = Mockery::mock(YandexMapsParser::class);
+        $parser->shouldReceive('parse')
+            ->once()
+            ->andThrow(new YandexMapsParsingException('Формат источника изменился'));
+
+        (new SyncOrganization($organization->id))->handle($parser);
+
+        $organization->refresh();
+        $this->assertSame(OrganizationStatus::Failed, $organization->status);
+        $this->assertSame('Формат источника изменился', $organization->sync_error);
     }
 
     private function parsedOrganization(): ParsedOrganization

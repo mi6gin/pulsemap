@@ -4,6 +4,7 @@ namespace Tests\Feature\Api;
 
 use App\Jobs\SyncOrganization;
 use App\Models\Organization;
+use App\Models\Review;
 use App\Models\User;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -69,5 +70,20 @@ class OrganizationControllerTest extends TestCase
         $response = $this->actingAs($user)->getJson('/api/organization');
 
         $response->assertOk()->assertJsonPath('data', null);
+    }
+
+    public function test_returns_source_and_stored_review_counts_separately(): void
+    {
+        $user = User::factory()->create();
+        $organization = Organization::factory()->for($user)->create([
+            'reviews_count' => 1758,
+        ]);
+        Review::factory()->count(3)->for($organization)->create();
+
+        $response = $this->actingAs($user)->getJson('/api/organization');
+
+        $response->assertOk()
+            ->assertJsonPath('data.reviews_count', 1758)
+            ->assertJsonPath('data.stored_reviews_count', 3);
     }
 }

@@ -25,6 +25,8 @@ class OrganizationSyncController extends Controller
 
         SyncOrganization::dispatch($organization->id);
 
-        return new OrganizationResource($organization->loadCount('reviews')->load('snapshots'));
+        return new OrganizationResource(
+            $organization->loadCount(['reviews as stored_reviews_count'])->load('snapshots'),
+        );
     }
 }

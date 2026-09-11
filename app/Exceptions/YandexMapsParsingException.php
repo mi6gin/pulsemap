@@ -7,8 +7,11 @@ use RuntimeException;
 class YandexMapsParsingException extends RuntimeException
 {
     /** @param array<string, mixed> $details */
-    public function __construct(string $message, private readonly array $details = [])
-    {
+    public function __construct(
+        string $message,
+        private readonly array $details = [],
+        private readonly bool $retryable = false,
+    ) {
         parent::__construct($message);
     }
 
@@ -16,5 +19,10 @@ class YandexMapsParsingException extends RuntimeException
     public function context(): array
     {
         return ['source' => 'yandex-maps', ...$this->details];
+    }
+
+    public function isRetryable(): bool
+    {
+        return $this->retryable;
     }
 }

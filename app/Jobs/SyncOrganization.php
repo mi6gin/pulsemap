@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\YandexMapsParsingException;
 use App\Models\Organization;
 use App\Models\OrganizationSnapshot;
 use App\Models\Review;
@@ -12,7 +13,6 @@ use App\Services\YandexMaps\YandexMapsParser;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -40,12 +40,6 @@ class SyncOrganization implements ShouldBeUnique, ShouldQueue
         return [15, 60, 180];
     }
 
-    /** @return list<object> */
-    public function middleware(): array
-    {
-        return [new RateLimited('yandex-maps')];
-    }
-
     /**
      * Execute the job.
      */
@@ -68,6 +62,27 @@ class SyncOrganization implements ShouldBeUnique, ShouldQueue
             );
 
             $this->persist($organization, $parsed);
+        } catch (YandexMapsParsingException $exception) {
+            if (! $exception->isRetryable()) {
+                $organization->update([
+                    'status' => OrganizationStatus::Failed,
+                    'sync_error' => $exception->getMessage(),
+                ]);
+
+                Log::warning('Парсер Яндекс.Карт обнаружил несовместимый ответ источника.', [
+                    'organization_id' => $this->organizationId,
+                    'exception' => $exception,
+                ]);
+
+                return;
+            }
+
+            $organization->update([
+                'status' => OrganizationStatus::Retrying,
+                'sync_error' => $exception->getMessage(),
+            ]);
+
+            throw $exception;
         } catch (Throwable $exception) {
             $organization->update([
                 'status' => OrganizationStatus::Retrying,

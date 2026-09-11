@@ -12,11 +12,14 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Sleep;
 use Throwable;
 
 class YandexMapsParser
 {
+    private const RATE_LIMIT_KEY = 'yandex-maps:http-requests';
+
     /** @var list<string> */
     private const ALLOWED_HOSTS = [
         'yandex.ru',
@@ -226,6 +229,9 @@ class YandexMapsParser
         ])->withOptions($options)
             ->connectTimeout((int) config('services.yandex_maps.connect_timeout', 10))
             ->timeout((int) config('services.yandex_maps.timeout', 25))
+            ->beforeSending(function (): void {
+                $this->acquireRequestSlot();
+            })
             ->retry(
                 [500, 1500, 3000],
                 0,
@@ -242,6 +248,7 @@ class YandexMapsParser
             throw new YandexMapsParsingException(
                 'Яндекс.Карты временно ограничили запросы. Повторим позже.',
                 ['status' => $response->status(), 'url' => $url],
+                true,
             );
         }
 
@@ -253,6 +260,7 @@ class YandexMapsParser
             throw new YandexMapsParsingException(
                 'Яндекс.Карты вернули ошибку.',
                 ['status' => $response->status(), 'url' => $url],
+                $response->serverError(),
             );
         }
     }
@@ -577,6 +585,23 @@ class YandexMapsParser
 
         if ($maximum > 0) {
             Sleep::for(random_int($minimum, $maximum))->milliseconds();
+        }
+    }
+
+    private function acquireRequestSlot(): void
+    {
+        $requestsPerMinute = (int) config('services.yandex_maps.requests_per_minute', 12);
+        if ($requestsPerMinute <= 0) {
+            return;
+        }
+
+        while (! RateLimiter::attempt(
+            self::RATE_LIMIT_KEY,
+            $requestsPerMinute,
+            static fn (): bool => true,
+            60,
+        )) {
+            Sleep::for(max(1, RateLimiter::availableIn(self::RATE_LIMIT_KEY)))->seconds();
         }
     }
 

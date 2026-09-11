@@ -18,7 +18,7 @@ class OrganizationController extends Controller
     {
         $organization = Organization::query()
             ->whereBelongsTo($request->user())
-            ->withCount('reviews')
+            ->withCount(['reviews as stored_reviews_count'])
             ->with(['snapshots' => fn ($query) => $query->latest('captured_at')->limit(5)])
             ->first();
 
@@ -61,6 +61,8 @@ class OrganizationController extends Controller
 
         SyncOrganization::dispatch($organization->id);
 
-        return new OrganizationResource($organization->loadCount('reviews')->load('snapshots'));
+        return new OrganizationResource(
+            $organization->loadCount(['reviews as stored_reviews_count'])->load('snapshots'),
+        );
     }
 }

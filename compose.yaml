@@ -21,7 +21,7 @@ services:
       - ./database:/var/www/html/database
       - ./storage:/var/www/html/storage
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:8000"]
+      test: ["CMD", "php", "-r", "exit(@file_get_contents('http://127.0.0.1:8000/up') === false ? 1 : 0);"]
       interval: 5s
       timeout: 3s
       retries: 12

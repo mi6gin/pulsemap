@@ -5,6 +5,7 @@ namespace Tests\Unit\Services\YandexMaps;
 use App\Exceptions\YandexMapsParsingException;
 use App\Services\YandexMaps\YandexMapsParser;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\RateLimiter;
 use Tests\TestCase;
 
 class YandexMapsParserTest extends TestCase
@@ -14,6 +15,8 @@ class YandexMapsParserTest extends TestCase
         config()->set('services.yandex_maps.delay_min_ms', 0);
         config()->set('services.yandex_maps.delay_max_ms', 0);
         config()->set('services.yandex_maps.page_size', 1);
+        config()->set('services.yandex_maps.requests_per_minute', 100);
+        RateLimiter::clear('yandex-maps:http-requests');
         Http::preventStrayRequests();
         Http::fake([
             'https://yandex.ru/maps/org/test/1234567890/' => Http::response($this->organizationHtml()),
@@ -49,6 +52,7 @@ class YandexMapsParserTest extends TestCase
         $this->assertCount(2, $result->reviews);
         $this->assertSame('Алина', $result->reviews[0]->authorName);
         $this->assertNotEmpty($progress);
+        $this->assertSame(3, RateLimiter::attempts('yandex-maps:http-requests'));
         Http::assertSentCount(3);
     }
 

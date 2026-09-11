@@ -26,10 +26,6 @@ class AppServiceProvider extends ServiceProvider
     {
         Model::preventLazyLoading(! app()->isProduction());
 
-        RateLimiter::for('yandex-maps', fn (): Limit => Limit::perMinute(
-            (int) config('services.yandex_maps.requests_per_minute', 12),
-        )->by('yandex-maps'));
-
         RateLimiter::for('login', fn (Request $request): Limit => Limit::perMinute(5)->by(
             Str::transliterate(Str::lower($request->string('email')->toString())).'|'.$request->ip(),
         ));
