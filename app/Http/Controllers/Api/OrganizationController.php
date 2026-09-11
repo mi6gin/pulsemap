@@ -59,7 +59,7 @@ class OrganizationController extends Controller
             return $organization;
         });
 
-        SyncOrganization::dispatch($organization->id);
+        SyncOrganization::dispatch($organization->id, $organization->source_url);
 
         return new OrganizationResource(
             $organization->loadCount(['reviews as stored_reviews_count'])->load('snapshots'),

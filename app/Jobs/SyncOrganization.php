@@ -27,11 +27,14 @@ class SyncOrganization implements ShouldBeUnique, ShouldQueue
 
     public int $uniqueFor = 600;
 
-    public function __construct(public readonly int $organizationId) {}
+    public function __construct(
+        public readonly int $organizationId,
+        public readonly string $sourceUrl,
+    ) {}
 
     public function uniqueId(): string
     {
-        return (string) $this->organizationId;
+        return $this->organizationId.':'.hash('sha256', $this->sourceUrl);
     }
 
     /** @return list<int> */
@@ -45,26 +48,35 @@ class SyncOrganization implements ShouldBeUnique, ShouldQueue
      */
     public function handle(YandexMapsParser $parser): void
     {
-        $organization = Organization::query()->findOrFail($this->organizationId);
-        $organization->update([
-            'status' => OrganizationStatus::Syncing,
-            'progress' => 2,
-            'sync_started_at' => now(),
-            'sync_error' => null,
-        ]);
+        $started = Organization::query()
+            ->whereKey($this->organizationId)
+            ->where('source_url', $this->sourceUrl)
+            ->update([
+                'status' => OrganizationStatus::Syncing,
+                'progress' => 2,
+                'sync_started_at' => now(),
+                'sync_error' => null,
+            ]);
+
+        if ($started === 0) {
+            return;
+        }
 
         try {
             $parsed = $parser->parse(
-                $organization->source_url,
-                function (int $progress) use ($organization): void {
-                    $organization->update(['progress' => $progress]);
+                $this->sourceUrl,
+                function (int $progress): void {
+                    Organization::query()
+                        ->whereKey($this->organizationId)
+                        ->where('source_url', $this->sourceUrl)
+                        ->update(['progress' => $progress]);
                 },
             );
 
-            $this->persist($organization, $parsed);
+            $this->persist($parsed);
         } catch (YandexMapsParsingException $exception) {
             if (! $exception->isRetryable()) {
-                $organization->update([
+                $this->updateCurrentSource([
                     'status' => OrganizationStatus::Failed,
                     'sync_error' => $exception->getMessage(),
                 ]);
@@ -77,14 +89,14 @@ class SyncOrganization implements ShouldBeUnique, ShouldQueue
                 return;
             }
 
-            $organization->update([
+            $this->updateCurrentSource([
                 'status' => OrganizationStatus::Retrying,
                 'sync_error' => $exception->getMessage(),
             ]);
 
             throw $exception;
         } catch (Throwable $exception) {
-            $organization->update([
+            $this->updateCurrentSource([
                 'status' => OrganizationStatus::Retrying,
                 'sync_error' => $exception->getMessage(),
             ]);
@@ -100,7 +112,7 @@ class SyncOrganization implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $organization->update([
+        $this->updateCurrentSource([
             'status' => OrganizationStatus::Failed,
             'sync_error' => $exception?->getMessage() ?? 'Неизвестная ошибка синхронизации.',
         ]);
@@ -111,10 +123,17 @@ class SyncOrganization implements ShouldBeUnique, ShouldQueue
         ]);
     }
 
-    private function persist(Organization $organization, ParsedOrganization $parsed): void
+    private function persist(ParsedOrganization $parsed): void
     {
-        DB::transaction(function () use ($organization, $parsed): void {
-            $organization->refresh();
+        DB::transaction(function () use ($parsed): void {
+            $organization = Organization::query()
+                ->lockForUpdate()
+                ->findOrFail($this->organizationId);
+
+            if ($organization->source_url !== $this->sourceUrl) {
+                return;
+            }
+
             $previous = [
                 'name' => $organization->name,
                 'rating' => $organization->rating === null ? null : (float) $organization->rating,
@@ -188,5 +207,14 @@ class SyncOrganization implements ShouldBeUnique, ShouldQueue
                 ]);
             }
         });
+    }
+
+    /** @param array<string, mixed> $attributes */
+    private function updateCurrentSource(array $attributes): void
+    {
+        Organization::query()
+            ->whereKey($this->organizationId)
+            ->where('source_url', $this->sourceUrl)
+            ->update($attributes);
     }
 }

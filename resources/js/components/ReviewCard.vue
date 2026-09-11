@@ -30,9 +30,10 @@ const dateLabel = computed(() => {
                         <h3 class="truncate font-medium text-stone-100">{{ review.author }}</h3>
                         <p class="mt-1 text-xs text-stone-500">{{ dateLabel }}</p>
                     </div>
-                    <div class="flex gap-0.5" :aria-label="`${review.rating} из 5`">
+                    <div v-if="review.rating > 0" class="flex gap-0.5" :aria-label="`${review.rating} из 5`">
                         <svg v-for="star in 5" :key="star" class="size-4" viewBox="0 0 24 24" :fill="star <= review.rating ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.7" :class="star <= review.rating ? 'text-amber-300' : 'text-stone-700'"><path d="m12 2.8 2.75 5.57 6.15.9-4.45 4.33 1.05 6.13L12 16.84l-5.5 2.89 1.05-6.13L3.1 9.27l6.15-.9L12 2.8Z"/></svg>
                     </div>
+                    <span v-else class="rounded-full border border-white/8 bg-white/[.035] px-2.5 py-1 text-xs text-stone-400">Без оценки</span>
                 </div>
                 <p class="mt-4 whitespace-pre-line text-sm leading-6 text-stone-300">{{ review.text || 'Автор оставил оценку без текста.' }}</p>
             </div>

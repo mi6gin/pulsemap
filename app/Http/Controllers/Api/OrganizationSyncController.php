@@ -23,7 +23,7 @@ class OrganizationSyncController extends Controller
             'sync_error' => null,
         ]);
 
-        SyncOrganization::dispatch($organization->id);
+        SyncOrganization::dispatch($organization->id, $organization->source_url);
 
         return new OrganizationResource(
             $organization->loadCount(['reviews as stored_reviews_count'])->load('snapshots'),

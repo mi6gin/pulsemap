@@ -42,6 +42,7 @@ class OrganizationControllerTest extends TestCase
         Queue::assertPushed(
             SyncOrganization::class,
             fn (SyncOrganization $job): bool => $job->organizationId === $user->organization->id
+                && $job->sourceUrl === 'https://yandex.ru/maps/org/test/1234567890/'
                 && $job->queue === null,
         );
     }

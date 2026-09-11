@@ -29,7 +29,7 @@ class SyncOrganizationTest extends TestCase
             ->with($organization->source_url, Mockery::type('Closure'))
             ->andReturn($this->parsedOrganization());
 
-        (new SyncOrganization($organization->id))->handle($parser);
+        (new SyncOrganization($organization->id, $organization->source_url))->handle($parser);
 
         $organization->refresh();
         $this->assertSame(OrganizationStatus::Complete, $organization->status);
@@ -59,7 +59,7 @@ class SyncOrganizationTest extends TestCase
         $parser = Mockery::mock(YandexMapsParser::class);
         $parser->shouldReceive('parse')->once()->andReturn($this->parsedOrganization());
 
-        (new SyncOrganization($organization->id))->handle($parser);
+        (new SyncOrganization($organization->id, $organization->source_url))->handle($parser);
 
         $this->assertDatabaseCount('reviews', 2);
         $this->assertDatabaseHas('reviews', [
@@ -78,7 +78,7 @@ class SyncOrganizationTest extends TestCase
         $organization = Organization::factory()->queued()->create();
         $exception = new RuntimeException('Источник изменился');
 
-        (new SyncOrganization($organization->id))->failed($exception);
+        (new SyncOrganization($organization->id, $organization->source_url))->failed($exception);
 
         $organization->refresh();
         $this->assertSame(OrganizationStatus::Failed, $organization->status);
@@ -93,11 +93,52 @@ class SyncOrganizationTest extends TestCase
             ->once()
             ->andThrow(new YandexMapsParsingException('Формат источника изменился'));
 
-        (new SyncOrganization($organization->id))->handle($parser);
+        (new SyncOrganization($organization->id, $organization->source_url))->handle($parser);
 
         $organization->refresh();
         $this->assertSame(OrganizationStatus::Failed, $organization->status);
         $this->assertSame('Формат источника изменился', $organization->sync_error);
+    }
+
+    public function test_results_are_discarded_when_source_url_changes_during_sync(): void
+    {
+        $organization = Organization::factory()->queued()->create();
+        $sourceUrl = $organization->source_url;
+        $newSourceUrl = 'https://yandex.ru/maps/org/another/9876543210/';
+        $parser = Mockery::mock(YandexMapsParser::class);
+        $parser->shouldReceive('parse')
+            ->once()
+            ->with($sourceUrl, Mockery::type('Closure'))
+            ->andReturnUsing(function () use ($organization, $newSourceUrl): ParsedOrganization {
+                Organization::query()
+                    ->whereKey($organization->id)
+                    ->update([
+                        'source_url' => $newSourceUrl,
+                        'status' => OrganizationStatus::Queued,
+                        'progress' => 0,
+                    ]);
+
+                return $this->parsedOrganization();
+            });
+
+        (new SyncOrganization($organization->id, $sourceUrl))->handle($parser);
+
+        $organization->refresh();
+        $this->assertSame($newSourceUrl, $organization->source_url);
+        $this->assertSame(OrganizationStatus::Queued, $organization->status);
+        $this->assertSame(0, $organization->progress);
+        $this->assertDatabaseCount('reviews', 0);
+        $this->assertDatabaseCount('organization_snapshots', 0);
+    }
+
+    public function test_unique_lock_is_scoped_to_organization_and_source_url(): void
+    {
+        $organization = Organization::factory()->create();
+        $first = new SyncOrganization($organization->id, 'https://yandex.ru/maps/org/first/1234567890/');
+        $second = new SyncOrganization($organization->id, 'https://yandex.ru/maps/org/second/9876543210/');
+
+        $this->assertNotSame($first->uniqueId(), $second->uniqueId());
+        $this->assertSame($first->uniqueId(), (new SyncOrganization($organization->id, $first->sourceUrl))->uniqueId());
     }
 
     private function parsedOrganization(): ParsedOrganization

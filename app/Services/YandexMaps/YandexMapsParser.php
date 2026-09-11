@@ -435,7 +435,7 @@ class YandexMapsParser
         $id = $this->firstString($rawReview, ['reviewId', 'id']);
         $rating = $this->firstInteger($rawReview, ['rating', 'stars']);
 
-        if ($id === null || $rating === null || $rating < 1 || $rating > 5) {
+        if ($id === null || $rating === null || $rating < 0 || $rating > 5) {
             throw new YandexMapsParsingException(
                 'Отзыв не содержит ожидаемые ID или оценку.',
                 ['business_id' => $businessId],

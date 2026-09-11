@@ -36,7 +36,7 @@ class YandexMapsUrl implements ValidationRule
             || isset($parts['user'])
             || isset($parts['pass'])
             || isset($parts['port'])
-            || (! str_starts_with($path, '/maps/') && ! str_starts_with($path, '/profile/'))
+            || ! str_starts_with($path, '/maps/')
         ) {
             $fail('Поддерживаются только HTTPS-ссылки на карточки в Яндекс.Картах.');
         }

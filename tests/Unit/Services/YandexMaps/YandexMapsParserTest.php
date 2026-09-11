@@ -32,7 +32,7 @@ class YandexMapsParserTest extends TestCase
                 'author' => ['name' => 'Марат'],
                 'createdTime' => 1788350400000,
                 'text' => 'Всё хорошо',
-                'rating' => 4,
+                'rating' => 0,
             ]])),
         ]);
         $progress = [];
@@ -51,6 +51,7 @@ class YandexMapsParserTest extends TestCase
         $this->assertSame(2, $result->reviewsCount);
         $this->assertCount(2, $result->reviews);
         $this->assertSame('Алина', $result->reviews[0]->authorName);
+        $this->assertSame(0, $result->reviews[1]->rating);
         $this->assertNotEmpty($progress);
         $this->assertSame(3, RateLimiter::attempts('yandex-maps:http-requests'));
         Http::assertSentCount(3);
