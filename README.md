@@ -4,7 +4,9 @@
 
 ## Демо
 
-Публичный URL будет добавлен после развёртывания. Это единственный пункт формата сдачи, который намеренно оставлен за пределами репозитория.
+Рабочий прототип: [https://pulse.gws.freemyip.com/](https://pulse.gws.freemyip.com/)
+
+Git-репозиторий: [https://github.com/mi6gin/pulsemap](https://github.com/mi6gin/pulsemap)
 
 Готовые варианты развёртывания и финальный чек-лист находятся в [`DEPLOYMENT.md`](DEPLOYMENT.md). Для Render добавлен Blueprint `render.yaml`; для VPS — `compose.production.yaml` и `.env.production.example`.
 
