@@ -1,0 +1,84 @@
+services:
+  - type: web
+    name: pulsemap-web
+    runtime: docker
+    region: frankfurt
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: sh -c "php artisan serve --host=0.0.0.0 --port=${PORT:-10000}"
+    preDeployCommand: php artisan migrate --force --no-interaction && php artisan db:seed --force --no-interaction
+    healthCheckPath: /up
+    autoDeployTrigger: checksPass
+    envVars:
+      - fromGroup: pulsemap-shared
+      - key: DB_URL
+        fromDatabase:
+          name: pulsemap-db
+          property: connectionString
+
+  - type: worker
+    name: pulsemap-worker
+    runtime: docker
+    region: frankfurt
+    plan: 0.5c-512mb
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: php artisan queue:work --queue=default --tries=4 --timeout=180 --sleep=2
+    maxShutdownDelaySeconds: 180
+    autoDeployTrigger: checksPass
+    envVars:
+      - fromGroup: pulsemap-shared
+      - key: DB_URL
+        fromDatabase:
+          name: pulsemap-db
+          property: connectionString
+
+databases:
+  - name: pulsemap-db
+    region: frankfurt
+    plan: free
+    postgresMajorVersion: "18"
+    databaseName: pulsemap
+    user: pulsemap
+    ipAllowList: []
+
+envVarGroups:
+  - name: pulsemap-shared
+    envVars:
+      - key: APP_NAME
+        value: PulseMap
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_KEY_BASE64
+        generateValue: true
+      - key: APP_LOCALE
+        value: ru
+      - key: APP_FALLBACK_LOCALE
+        value: ru
+      - key: LOG_CHANNEL
+        value: stderr
+      - key: LOG_LEVEL
+        value: info
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_SSLMODE
+        value: require
+      - key: SESSION_DRIVER
+        value: database
+      - key: SESSION_SECURE_COOKIE
+        value: "true"
+      - key: SESSION_SAME_SITE
+        value: lax
+      - key: QUEUE_CONNECTION
+        value: database
+      - key: DB_QUEUE_RETRY_AFTER
+        value: "240"
+      - key: CACHE_STORE
+        value: database
+      - key: RUN_MIGRATIONS
+        value: "false"
+      - key: YANDEX_MAPS_REQUESTS_PER_MINUTE
+        value: "12"

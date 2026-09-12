@@ -4,6 +4,8 @@ namespace Tests\Feature\Auth;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Http\Request;
+use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use Tests\TestCase;
 
 class AuthenticatedSessionControllerTest extends TestCase
@@ -40,6 +42,16 @@ class AuthenticatedSessionControllerTest extends TestCase
             ->assertJsonValidationErrors(['email'])
             ->assertJsonPath('errors.email.0', 'Неверный email или пароль.');
         $this->assertGuest();
+    }
+
+    public function test_current_host_with_custom_port_is_treated_as_stateful(): void
+    {
+        $request = Request::create('/api/me', 'GET', server: [
+            'HTTP_HOST' => '127.0.0.1:8018',
+            'HTTP_REFERER' => 'http://127.0.0.1:8018/',
+        ]);
+
+        $this->assertTrue(EnsureFrontendRequestsAreStateful::fromFrontend($request));
     }
 
     public function test_logout_invalidates_authenticated_session(): void

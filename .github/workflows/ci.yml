@@ -41,3 +41,6 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+
+      - name: Build production Docker image
+        run: docker build --tag pulsemap:ci .

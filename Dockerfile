@@ -22,7 +22,10 @@ RUN composer install \
 
 FROM php:8.4-cli-bookworm AS application
 
-RUN docker-php-ext-install pcntl
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libpq-dev \
+    && docker-php-ext-install pcntl pdo_pgsql \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /var/www/html
 
@@ -37,4 +40,4 @@ RUN chmod +x docker/entrypoint.sh \
 EXPOSE 8000
 
 ENTRYPOINT ["docker/entrypoint.sh"]
-CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+CMD ["sh", "-c", "php artisan serve --host=0.0.0.0 --port=${PORT:-8000}"]
