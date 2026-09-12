@@ -73,6 +73,35 @@ class SyncOrganizationTest extends TestCase
         ]);
     }
 
+    public function test_partial_result_is_rejected_without_deleting_existing_reviews(): void
+    {
+        $organization = Organization::factory()->create();
+        Review::factory()->for($organization)->create(['source_review_id' => 'existing-review']);
+        $complete = $this->parsedOrganization();
+        $partial = new ParsedOrganization(
+            externalId: $complete->externalId,
+            canonicalUrl: $complete->canonicalUrl,
+            name: $complete->name,
+            rating: $complete->rating,
+            ratingsCount: $complete->ratingsCount,
+            reviewsCount: $complete->reviewsCount,
+            reviews: [$complete->reviews[0]],
+        );
+        $parser = Mockery::mock(YandexMapsParser::class);
+        $parser->shouldReceive('parse')->once()->andReturn($partial);
+
+        (new SyncOrganization($organization->id, $organization->source_url))->handle($parser);
+
+        $organization->refresh();
+        $this->assertSame(OrganizationStatus::Failed, $organization->status);
+        $this->assertStringContainsString('Неполный результат', $organization->sync_error);
+        $this->assertDatabaseCount('reviews', 1);
+        $this->assertDatabaseHas('reviews', [
+            'organization_id' => $organization->id,
+            'source_review_id' => 'existing-review',
+        ]);
+    }
+
     public function test_terminal_failure_is_visible_on_organization(): void
     {
         $organization = Organization::factory()->queued()->create();

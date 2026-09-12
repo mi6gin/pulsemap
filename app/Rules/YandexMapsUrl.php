@@ -30,13 +30,15 @@ class YandexMapsUrl implements ValidationRule
             'yandex.ru', 'yandex.com', 'yandex.kz', 'yandex.by',
             'yandex.uz', 'yandex.com.tr', 'yandex.com.ge',
         ];
+        $isOrganizationPath = preg_match('~^/maps/(?:org|business)/[^/]+/[0-9]{6,}(?:/|$)~u', $path) === 1;
+        $isShortPath = preg_match('~^/maps/-/[^/?#]+/?$~u', $path) === 1;
 
         if (($parts['scheme'] ?? '') !== 'https'
             || ! in_array($host, $allowedHosts, true)
             || isset($parts['user'])
             || isset($parts['pass'])
             || isset($parts['port'])
-            || ! str_starts_with($path, '/maps/')
+            || (! $isOrganizationPath && ! $isShortPath)
         ) {
             $fail('Поддерживаются только HTTPS-ссылки на карточки в Яндекс.Картах.');
         }

@@ -7,6 +7,7 @@ return [
         'timeout' => (int) env('YANDEX_MAPS_TIMEOUT', 25),
         'page_size' => (int) env('YANDEX_MAPS_PAGE_SIZE', 50),
         'max_pages' => (int) env('YANDEX_MAPS_MAX_PAGES', 20),
+        'available_reviews_limit' => (int) env('YANDEX_MAPS_AVAILABLE_REVIEWS_LIMIT', 600),
         'delay_min_ms' => (int) env('YANDEX_MAPS_DELAY_MIN_MS', 250),
         'delay_max_ms' => (int) env('YANDEX_MAPS_DELAY_MAX_MS', 650),
         'requests_per_minute' => (int) env('YANDEX_MAPS_REQUESTS_PER_MINUTE', 12),

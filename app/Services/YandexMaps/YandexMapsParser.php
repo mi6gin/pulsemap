@@ -13,7 +13,7 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Support\Facades\Sleep;
+use Illuminate\Support\Sleep;
 use Throwable;
 
 class YandexMapsParser
@@ -45,6 +45,7 @@ class YandexMapsParser
         $seenReviewIds = [];
         $pageSize = (int) config('services.yandex_maps.page_size', 50);
         $maxPages = (int) config('services.yandex_maps.max_pages', 20);
+        $availableReviewsLimit = max(1, (int) config('services.yandex_maps.available_reviews_limit', 600));
 
         for ($page = 1; $page <= $maxPages; $page++) {
             $pageHtml = $page === 1 && $this->isFirstReviewsPage($canonicalUrl)
@@ -57,6 +58,23 @@ class YandexMapsParser
                     throw new YandexMapsParsingException(
                         'Формат страницы Яндекс.Карт изменился: не найден список отзывов.',
                         ['business_id' => $externalId, 'page' => $page],
+                    );
+                }
+
+                $expectedAvailableReviews = $pageMetadata['reviews_count'] === null
+                    ? null
+                    : min($pageMetadata['reviews_count'], $availableReviewsLimit);
+
+                if ($expectedAvailableReviews !== null && count($reviews) < $expectedAvailableReviews) {
+                    throw new YandexMapsParsingException(
+                        'Выдача отзывов Яндекс.Карт неожиданно оборвалась до получения всех доступных записей.',
+                        [
+                            'business_id' => $externalId,
+                            'page' => $page,
+                            'received' => count($reviews),
+                            'expected_available' => $expectedAvailableReviews,
+                        ],
+                        true,
                     );
                 }
 
@@ -85,14 +103,32 @@ class YandexMapsParser
             $pageMetadata = $this->mergeMetadata($pageMetadata, $this->extractMetadata($pageHtml, $externalId));
             $metadata = $pageMetadata;
             $expectedReviews = $metadata['reviews_count'];
+            $expectedAvailableReviews = $expectedReviews === null
+                ? null
+                : min($expectedReviews, $availableReviewsLimit);
             $estimatedPages = max(1, (int) ceil(($expectedReviews ?? count($reviews)) / $pageSize));
             if ($onProgress !== null) {
                 $onProgress(min(94, 10 + (int) floor(($page / max(1, $estimatedPages)) * 84)));
             }
 
-            if (($expectedReviews !== null && count($reviews) >= $expectedReviews)
-                || count($rawReviews) < $pageSize
-                || $newReviewsCount === 0) {
+            if ($expectedAvailableReviews !== null && count($reviews) >= $expectedAvailableReviews) {
+                break;
+            }
+
+            if (count($rawReviews) < $pageSize || $newReviewsCount === 0) {
+                if ($expectedAvailableReviews !== null && count($reviews) < $expectedAvailableReviews) {
+                    throw new YandexMapsParsingException(
+                        'Яндекс.Карты вернули неполную выдачу отзывов.',
+                        [
+                            'business_id' => $externalId,
+                            'page' => $page,
+                            'received' => count($reviews),
+                            'expected_available' => $expectedAvailableReviews,
+                        ],
+                        true,
+                    );
+                }
+
                 break;
             }
 

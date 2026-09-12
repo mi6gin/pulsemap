@@ -125,6 +125,20 @@ class SyncOrganization implements ShouldBeUnique, ShouldQueue
 
     private function persist(ParsedOrganization $parsed): void
     {
+        $availableReviewsLimit = max(1, (int) config('services.yandex_maps.available_reviews_limit', 600));
+        $expectedAvailableReviews = min($parsed->reviewsCount, $availableReviewsLimit);
+
+        if (count($parsed->reviews) < $expectedAvailableReviews) {
+            throw new YandexMapsParsingException(
+                'Неполный результат парсинга отклонён: ранее сохранённые отзывы оставлены без изменений.',
+                [
+                    'organization_id' => $this->organizationId,
+                    'received' => count($parsed->reviews),
+                    'expected_available' => $expectedAvailableReviews,
+                ],
+            );
+        }
+
         DB::transaction(function () use ($parsed): void {
             $organization = Organization::query()
                 ->lockForUpdate()

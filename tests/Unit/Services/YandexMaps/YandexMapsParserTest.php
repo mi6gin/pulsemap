@@ -6,17 +6,19 @@ use App\Exceptions\YandexMapsParsingException;
 use App\Services\YandexMaps\YandexMapsParser;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Sleep;
 use Tests\TestCase;
 
 class YandexMapsParserTest extends TestCase
 {
     public function test_parses_metadata_and_paginated_reviews_from_embedded_page_data(): void
     {
-        config()->set('services.yandex_maps.delay_min_ms', 0);
-        config()->set('services.yandex_maps.delay_max_ms', 0);
+        config()->set('services.yandex_maps.delay_min_ms', 1);
+        config()->set('services.yandex_maps.delay_max_ms', 1);
         config()->set('services.yandex_maps.page_size', 1);
         config()->set('services.yandex_maps.requests_per_minute', 100);
         RateLimiter::clear('yandex-maps:http-requests');
+        Sleep::fake();
         Http::preventStrayRequests();
         Http::fake([
             'https://yandex.ru/maps/org/test/1234567890/' => Http::response($this->organizationHtml()),
@@ -54,7 +56,34 @@ class YandexMapsParserTest extends TestCase
         $this->assertSame(0, $result->reviews[1]->rating);
         $this->assertNotEmpty($progress);
         $this->assertSame(3, RateLimiter::attempts('yandex-maps:http-requests'));
+        Sleep::assertSleptTimes(1);
         Http::assertSentCount(3);
+    }
+
+    public function test_rejects_partial_paginated_results(): void
+    {
+        config()->set('services.yandex_maps.delay_min_ms', 0);
+        config()->set('services.yandex_maps.delay_max_ms', 0);
+        config()->set('services.yandex_maps.page_size', 1);
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://yandex.ru/maps/org/test/1234567890/' => Http::response($this->organizationHtml()),
+            'https://yandex.ru/maps/org/test/1234567890/reviews/?page=1' => Http::response($this->organizationHtml([[
+                'reviewId' => 'review-1',
+                'author' => ['name' => 'Алина'],
+                'text' => 'Отличное место',
+                'rating' => 5,
+            ]])),
+            'https://yandex.ru/maps/org/test/1234567890/reviews/?page=2' => Http::response($this->organizationHtml()),
+        ]);
+
+        try {
+            (new YandexMapsParser)->parse('https://yandex.ru/maps/org/test/1234567890/');
+            $this->fail('Ожидалась ошибка неполной выдачи.');
+        } catch (YandexMapsParsingException $exception) {
+            $this->assertStringContainsString('неожиданно оборвалась', $exception->getMessage());
+            $this->assertTrue($exception->isRetryable());
+        }
     }
 
     public function test_throws_clear_exception_when_reviews_shape_changes(): void

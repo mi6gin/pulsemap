@@ -19,6 +19,8 @@ class YandexMapsUrlTest extends TestCase
         $this->assertNotEmpty($this->failuresFor('https://user:secret@yandex.ru/maps/org/name/1234567890/'));
         $this->assertNotEmpty($this->failuresFor('http://yandex.ru/maps/org/name/1234567890/'));
         $this->assertNotEmpty($this->failuresFor('https://yandex.ru/profile/1234567890'));
+        $this->assertNotEmpty($this->failuresFor('https://yandex.ru/maps/213/moscow/search/cafe'));
+        $this->assertNotEmpty($this->failuresFor('https://yandex.ru/maps/org/name/'));
     }
 
     /** @return list<string> */
