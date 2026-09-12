@@ -102,17 +102,102 @@ class YandexMapsParserTest extends TestCase
         (new YandexMapsParser)->parse('https://yandex.ru/maps/org/test/1234567890/');
     }
 
-    /** @param list<array<string, mixed>> $reviews */
-    private function organizationHtml(array $reviews = []): string
+    public function test_requires_exact_review_count_instead_of_silently_using_received_rows(): void
+    {
+        config()->set('services.yandex_maps.delay_min_ms', 0);
+        config()->set('services.yandex_maps.delay_max_ms', 0);
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://yandex.ru/maps/org/test/1234567890/reviews/' => Http::response(
+                $this->organizationHtml([], ['reviewCount' => null]),
+            ),
+        ]);
+
+        $this->expectException(YandexMapsParsingException::class);
+        $this->expectExceptionMessage('точные счётчики');
+
+        (new YandexMapsParser)->parse('https://yandex.ru/maps/org/test/1234567890/reviews/');
+    }
+
+    public function test_loads_all_six_hundred_available_reviews(): void
+    {
+        config()->set('services.yandex_maps.delay_min_ms', 0);
+        config()->set('services.yandex_maps.delay_max_ms', 0);
+        config()->set('services.yandex_maps.requests_per_minute', 0);
+        Http::preventStrayRequests();
+
+        $responses = [
+            'https://yandex.ru/maps/org/1234567890/' => Http::response(
+                $this->organizationHtml([], ['reviewCount' => 600]),
+            ),
+        ];
+
+        for ($page = 1; $page <= 12; $page++) {
+            $reviews = [];
+            for ($offset = 1; $offset <= 50; $offset++) {
+                $number = (($page - 1) * 50) + $offset;
+                $reviews[] = [
+                    'reviewId' => 'review-'.$number,
+                    'author' => ['name' => 'Автор '.$number],
+                    'createdTime' => '2026-09-01T10:00:00+03:00',
+                    'text' => 'Отзыв '.$number,
+                    'rating' => ($number % 5) + 1,
+                ];
+            }
+
+            $responses['https://yandex.ru/maps/org/1234567890/reviews/?page='.$page] = Http::response(
+                $this->organizationHtml($reviews, ['reviewCount' => 600]),
+            );
+        }
+
+        Http::fake($responses);
+
+        $result = (new YandexMapsParser)->parse('https://yandex.ru/maps/org/1234567890/');
+
+        $this->assertSame(600, $result->reviewsCount);
+        $this->assertCount(600, $result->reviews);
+        $this->assertSame('review-1', $result->reviews[0]->id);
+        $this->assertSame('review-600', $result->reviews[599]->id);
+        Http::assertSentCount(13);
+    }
+
+    public function test_normalizes_oid_link_and_uses_organization_name_instead_of_generic_map_title(): void
+    {
+        config()->set('services.yandex_maps.delay_min_ms', 0);
+        config()->set('services.yandex_maps.delay_max_ms', 0);
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://yandex.ru/maps/213/moscow/?oid=1234567890' => Http::response(
+                '<!doctype html><html><head><title>Карта Москвы — Яндекс Карты</title></head><body>'
+                .str_repeat('map content ', 200).'</body></html>',
+            ),
+            'https://yandex.ru/maps/org/1234567890/reviews/?page=1' => Http::response(
+                $this->organizationHtml([], ['reviewCount' => 0]),
+            ),
+        ]);
+
+        $result = (new YandexMapsParser)->parse('https://yandex.ru/maps/213/moscow/?oid=1234567890');
+
+        $this->assertSame('Тестовая компания', $result->name);
+        $this->assertSame('https://yandex.ru/maps/org/1234567890/', $result->canonicalUrl);
+        $this->assertSame(0, $result->reviewsCount);
+        Http::assertSentCount(2);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $reviews
+     * @param  array<string, mixed>  $metadataOverrides
+     */
+    private function organizationHtml(array $reviews = [], array $metadataOverrides = []): string
     {
         $metadata = json_encode([
-            'business' => [
+            'business' => array_merge([
                 'id' => '1234567890',
                 'title' => 'Тестовая компания',
                 'rating' => 4.7,
                 'ratingCount' => 321,
                 'reviewCount' => 2,
-            ],
+            ], $metadataOverrides),
             'reviewResults' => ['reviews' => $reviews],
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
 

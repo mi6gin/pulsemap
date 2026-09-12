@@ -39,7 +39,14 @@ class YandexMapsParser
         [$html, $canonicalUrl] = $this->fetchOrganizationPage($sourceUrl, $cookieJar);
         $externalId = $this->extractBusinessId($canonicalUrl, $html);
         $pageMetadata = $this->extractMetadata($html, $externalId);
-        $reviewsUrl = $this->reviewsUrl($canonicalUrl);
+        $reviewsUrl = $this->reviewsUrl($canonicalUrl, $externalId);
+
+        if (! $this->hasOrganizationPath($canonicalUrl)) {
+            // A map URL with ?oid=... has a generic map title. Fetch the
+            // organization page before accepting its name as authoritative.
+            $pageMetadata['name'] = null;
+            $canonicalUrl = preg_replace('~/reviews/$~', '/', $reviewsUrl) ?? $canonicalUrl;
+        }
 
         $reviews = [];
         $seenReviewIds = [];
@@ -51,6 +58,7 @@ class YandexMapsParser
             $pageHtml = $page === 1 && $this->isFirstReviewsPage($canonicalUrl)
                 ? $html
                 : $this->fetchReviewsPage($reviewsUrl, $page, $cookieJar);
+            $pageMetadata = $this->mergeMetadata($pageMetadata, $this->extractMetadata($pageHtml, $externalId));
             $rawReviews = $this->extractReviews($pageHtml);
 
             if ($rawReviews === []) {
@@ -100,7 +108,6 @@ class YandexMapsParser
                 $newReviewsCount++;
             }
 
-            $pageMetadata = $this->mergeMetadata($pageMetadata, $this->extractMetadata($pageHtml, $externalId));
             $metadata = $pageMetadata;
             $expectedReviews = $metadata['reviews_count'];
             $expectedAvailableReviews = $expectedReviews === null
@@ -146,11 +153,11 @@ class YandexMapsParser
 
         $name = $metadata['name'];
         $ratingsCount = $metadata['ratings_count'];
-        $reviewsCount = $metadata['reviews_count'] ?? count($reviews);
+        $reviewsCount = $metadata['reviews_count'];
 
-        if ($name === null || $ratingsCount === null) {
+        if ($name === null || $ratingsCount === null || $reviewsCount === null) {
             throw new YandexMapsParsingException(
-                'Не удалось надёжно извлечь название и счётчики. Вероятно, формат Яндекс.Карт изменился.',
+                'Не удалось надёжно извлечь название и точные счётчики. Вероятно, формат Яндекс.Карт изменился.',
                 ['business_id' => $externalId],
             );
         }
@@ -221,19 +228,25 @@ class YandexMapsParser
         return $response->body();
     }
 
-    private function reviewsUrl(string $canonicalUrl): string
+    private function reviewsUrl(string $canonicalUrl, string $externalId): string
     {
         $parts = parse_url($canonicalUrl);
         $path = $parts['path'] ?? '';
+        $origin = ($parts['scheme'] ?? 'https').'://'.($parts['host'] ?? '');
 
-        if (preg_match('~^(/maps/(?:org|business)/[^/]+/[0-9]+)~u', $path, $matches) !== 1) {
-            throw new YandexMapsParsingException(
-                'Не удалось построить адрес раздела с отзывами.',
-                ['url' => $canonicalUrl],
-            );
+        if (preg_match('~^(/maps/(?:org|business)/(?:[^/]+/)?[0-9]+)(?:/|$)~u', $path, $matches) === 1) {
+            return $origin.$matches[1].'/reviews/';
         }
 
-        return ($parts['scheme'] ?? 'https').'://'.($parts['host'] ?? '').$matches[1].'/reviews/';
+        return $origin.'/maps/org/'.$externalId.'/reviews/';
+    }
+
+    private function hasOrganizationPath(string $url): bool
+    {
+        return preg_match(
+            '~^/maps/(?:org|business)/(?:[^/]+/)?[0-9]+(?:/|$)~u',
+            (string) parse_url($url, PHP_URL_PATH),
+        ) === 1;
     }
 
     private function isFirstReviewsPage(string $url): bool
@@ -304,7 +317,7 @@ class YandexMapsParser
     private function extractBusinessId(string $canonicalUrl, string $html): string
     {
         $patterns = [
-            '~/(?:org|business)/[^/?#]+/(\\d{6,})~u',
+            '~/(?:org|business)/(?:[^/?#]+/)?(\\d{6,})(?:[/?#]|$)~u',
             '~[?&](?:oid|orgpage)=([0-9]{6,})~u',
         ];
 

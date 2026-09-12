@@ -25,20 +25,26 @@ class YandexMapsUrl implements ValidationRule
         $host = mb_strtolower($parts['host'] ?? '');
         $host = str_starts_with($host, 'www.') ? mb_substr($host, 4) : $host;
         $path = $parts['path'] ?? '';
+        $query = [];
+        parse_str($parts['query'] ?? '', $query);
 
         $allowedHosts = [
             'yandex.ru', 'yandex.com', 'yandex.kz', 'yandex.by',
             'yandex.uz', 'yandex.com.tr', 'yandex.com.ge',
         ];
-        $isOrganizationPath = preg_match('~^/maps/(?:org|business)/[^/]+/[0-9]{6,}(?:/|$)~u', $path) === 1;
+        $isOrganizationPath = preg_match('~^/maps/(?:org|business)/(?:[^/]+/)?[0-9]{6,}(?:/|$)~u', $path) === 1;
         $isShortPath = preg_match('~^/maps/-/[^/?#]+/?$~u', $path) === 1;
+        $isOrganizationQuery = preg_match('~^/maps(?:/|$)~u', $path) === 1
+            && isset($query['oid'])
+            && is_scalar($query['oid'])
+            && preg_match('/^[0-9]{6,}$/', (string) $query['oid']) === 1;
 
         if (($parts['scheme'] ?? '') !== 'https'
             || ! in_array($host, $allowedHosts, true)
             || isset($parts['user'])
             || isset($parts['pass'])
             || isset($parts['port'])
-            || (! $isOrganizationPath && ! $isShortPath)
+            || (! $isOrganizationPath && ! $isShortPath && ! $isOrganizationQuery)
         ) {
             $fail('Поддерживаются только HTTPS-ссылки на карточки в Яндекс.Картах.');
         }
